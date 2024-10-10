@@ -1,0 +1,12 @@
+/.DS_Store
+/.env
+/__pycache__
+/app.py
+/autoBTC
+/autoticket.py
+/backtest.py
+/bestk.py
+/bitoinAutoTrade.py
+/dd.xlsx
+/index.html
+/test.py

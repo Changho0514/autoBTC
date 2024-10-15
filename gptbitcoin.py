@@ -360,9 +360,21 @@ def ai_trading():
     news_headlines = get_latest_news()
 
     # 7. YouTube 자막 데이터 가져오기
-    playlist = ['6itriowPhhM', 'Ln2PevCHEuU', 'Li3EV0YVuSg', '3XbtEX3jUv4']
-    youtube_transcript = get_combined_transcript(playlist)
+    # playlist = ['6itriowPhhM', 'Ln2PevCHEuU', 'Li3EV0YVuSg', '3XbtEX3jUv4']
+    # youtube_transcript = get_combined_transcript(playlist)
+    # # 리스트를 문자열로 변환 (각 항목을 줄바꿈으로 구분)
+    # youtube_transcript_str = "\n".join(youtube_transcript)
 
+    # # 파일에 저장
+    # with open("strategy.txt", "w", encoding="UTF-8") as f:
+    #     f.write(youtube_transcript_str)
+    # f.close()
+
+    # 파일에서 YouTube 자막 데이터를 읽어오기
+    f = open("strategy.txt", "r", encoding="UTF-8")
+    youtube_transcript = f.read()
+    f.close()
+    
     # 8. AI에게 데이터 제공하고 판단 받기
     client = OpenAI()
 

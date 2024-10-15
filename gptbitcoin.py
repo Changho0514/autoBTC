@@ -20,10 +20,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, WebDriverException, NoSuchElementException
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from youtube_transcript_api import YouTubeTranscriptApi
 from pydantic import BaseModel
 from openai import OpenAI
+import sqlite3
 
 class TradingDecision(BaseModel):
     decision: str
@@ -71,18 +72,18 @@ def get_fear_and_greed_index():
 def get_latest_news():
     """SerpApi를 이용하여 최신 비트코인 관련 뉴스 가져오기"""
     url = "https://serpapi.com/search"
-    serpapi_key = os.getenv("SERPAPI_API_KEY")
+    SERP_API_KEY = os.getenv("SERP_API_KEY")
     params = {
         "engine": "google_news",
         "q": "Bitcoin",
         "gl": "us",  # 미국 뉴스
         "hl": "en",  # 영어
-        "api_key": serpapi_key
+        "api_key": SERP_API_KEY
     }
 
     response = requests.get(url, params=params)
     news_data = response.json()
-    
+
     # 'news_results'에서 상위 5개의 뉴스만 선택
     news_results = news_data["news_results"][:5]
     
@@ -100,12 +101,8 @@ def get_latest_news():
                 title = story.get("title", "No title available")
                 date = story.get("date", "No date available")
                 all_stories.append({"title": title, "date": date})
-    
 
     return all_stories
-
-# 최신 비트코인 관련 뉴스 및 stories 가져오기
-stories = get_latest_news()
 
 def setup_chrome_options():
     chrome_options = Options()
@@ -224,6 +221,105 @@ def get_combined_transcript(playlist):
         print(f"Error fetching YouTube transcript for video {video_id}: {e}")
     
     return subscribes
+
+# SQLite DB 연결 및 테이블 생성 함수 (연결을 반환)
+def init_db():
+    conn = sqlite3.connect('trading_data.db')
+    cursor = conn.cursor()
+    
+    # 테이블이 존재하지 않으면 생성
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS trades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT,
+        decision TEXT,
+        percentage INTEGER,
+        reason TEXT,
+        btc_balance REAL,
+        krw_balance REAL,
+        btc_avg_buy_price REAL,
+        btc_krw_price REAL,
+        total_asset REAL,
+        reflection TEXT
+    )
+    ''')
+    
+    conn.commit()
+    return conn  # 연결을 닫지 않고 반환하여 이후 트랜잭션에서 계속 사용할 수 있도록 함
+
+def get_db_connection():
+    return sqlite3.connect('trading_data.db')
+
+# 매매 데이터를 DB에 저장하는 함수 (conn을 전달받아 사용)
+def save_trade_data_with_reflection(conn, decision, percentage, reason, btc_balance, krw_balance, btc_avg_buy_price, btc_krw_price, total_asset, reflection):
+    cursor = conn.cursor()
+
+    # 현재 시간을 가져옴
+    current_time = datetime.now().isoformat()
+
+    # 데이터를 테이블에 삽입
+    cursor.execute('''
+    INSERT INTO trades (timestamp, decision, percentage, reason, btc_balance, krw_balance, btc_avg_buy_price, btc_krw_price, total_asset, reflection)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (current_time, decision, percentage, reason, btc_balance, krw_balance, btc_avg_buy_price, btc_krw_price, total_asset, reflection))
+    
+    conn.commit()
+
+def get_recent_trades(conn, days=7):
+    c = conn.cursor()
+    seven_days_ago = (datetime.now() - timedelta(days=days)).isoformat()
+    c.execute("SELECT * FROM trades WHERE timestamp > ? ORDER BY timestamp DESC", (seven_days_ago,))
+    columns = [column[0] for column in c.description]
+    return pd.DataFrame.from_records(data=c.fetchall(), columns=columns)
+
+
+def calculate_performance(trades_df):
+    if trades_df.empty:
+        return 0
+    
+    initial_balance = trades_df.iloc[-1]['krw_balance'] + trades_df.iloc[-1]['btc_balance'] * trades_df.iloc[-1]['btc_krw_price']
+    final_balance = trades_df.iloc[0]['krw_balance'] + trades_df.iloc[0]['btc_balance'] * trades_df.iloc[0]['btc_krw_price']
+    
+    return (final_balance - initial_balance) / initial_balance * 100
+
+def generate_reflection(trades_df, current_market_data):
+    performance = calculate_performance(trades_df)
+    
+    client = OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4o-2024-08-06",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are an AI trading assistant tasked with analyzing recent trading performance and current market conditions to generate insights and improvements for future trading decisions."
+            },
+            {
+                "role": "user",
+                "content": f"""
+                Recent trading data:
+                {trades_df.to_json(orient='records')}
+                
+                Current market data:
+                {current_market_data}
+                
+                Overall performance in the last 7 days: {performance:.2f}%
+                
+                Please analyze this data and provide:
+                1. A brief reflection on the recent trading decisions
+                2. Insights on what worked well and what didn't
+                3. Suggestions for improvement in future trading decisions
+                4. Any patterns or trends you notice in the market data
+                
+                Limit your response to 250 words or less.
+                """
+            }
+        ]
+    )
+    
+    return response.choices[0].message.content
+
+
+# 매매 판단 및 실행 함수
 def ai_trading():
     # Upbit 객체 생성
     access = os.getenv("UPBIT_ACCESS_KEY")
@@ -233,20 +329,22 @@ def ai_trading():
     # 1. 현재 투자 상태 조회
     all_balances = upbit.get_balances()
 
-    # 반환된 값을 확인하기 위해 로그 출력
-    logger.info(f"Balances: {all_balances}")
+    # BTC와 KRW 잔액 조회
+    btc_balance = upbit.get_balance("BTC")
+    krw_balance = upbit.get_balance("KRW")
+    btc_avg_buy_price = None
+    for balance in all_balances:
+        if balance['currency'] == 'BTC':
+            btc_avg_buy_price = float(balance['avg_buy_price'])
+            break
 
-    # all_balances가 리스트인지 확인
-    if isinstance(all_balances, list):
-        filtered_balances = [balance for balance in all_balances if balance['currency'] in ['BTC', 'KRW']]
-    else:
-        logger.error(f"Unexpected data type for balances: {type(all_balances)}")
-        return  # 함수 종료
-    
     # 2. 오더북(호가 데이터) 조회
     orderbook = pyupbit.get_orderbook("KRW-BTC")
     
-    # 3. 차트 데이터 조회 및 보조지표 추가
+    # 3. 현재 BTC 가격 조회
+    btc_krw_price = pyupbit.get_current_price("KRW-BTC")
+
+    # 4. 차트 데이터 조회 및 보조지표 추가
     df_daily = pyupbit.get_ohlcv("KRW-BTC", interval="day", count=30)
     df_daily = dropna(df_daily)
     df_daily = add_indicators(df_daily)
@@ -255,40 +353,36 @@ def ai_trading():
     df_hourly = dropna(df_hourly)
     df_hourly = add_indicators(df_hourly)
 
-    # 4. 공포 탐욕 지수 가져오기
+    # 5. 공포 탐욕 지수 가져오기
     fear_greed_index = get_fear_and_greed_index()
 
-    # 5. 뉴스 헤드라인 가져오기
+    # 6. 뉴스 헤드라인 가져오기
     news_headlines = get_latest_news()
 
-    # 6. YouTube 자막 데이터 가져오기
+    # 7. YouTube 자막 데이터 가져오기
     playlist = ['6itriowPhhM', 'Ln2PevCHEuU', 'Li3EV0YVuSg', '3XbtEX3jUv4']
     youtube_transcript = get_combined_transcript(playlist)
 
-    # Selenium으로 차트 캡처
-    driver = None
-    try:
-        driver = create_driver()
-        driver.get("https://upbit.com/full_chart?code=CRIX.UPBIT.KRW-BTC")
-        logger.info("페이지 로드 완료")
-        time.sleep(30)  # 페이지 로딩 대기 시간 증가
-        logger.info("차트 작업 시작")
-        perform_chart_actions(driver)
-        logger.info("차트 작업 완료")
-        chart_image, saved_file_path = capture_and_encode_screenshot(driver)
-        logger.info(f"스크린샷 캡처 완료. 저장된 파일 경로: {saved_file_path}")
-    except WebDriverException as e:
-        logger.error(f"WebDriver 오류 발생: {e}")
-        chart_image, saved_file_path = None, None
-    except Exception as e:
-        logger.error(f"차트 캡처 중 오류 발생: {e}")
-        chart_image, saved_file_path = None, None
-    finally:
-        if driver:
-            driver.quit()
-
-    # AI에게 데이터 제공하고 판단 받기
+    # 8. AI에게 데이터 제공하고 판단 받기
     client = OpenAI()
+
+    # 8. 과거 거래 조회 및 성과 계산
+    # 데이터베이스 연결
+    conn = get_db_connection()
+    
+    # 최근 거래 내역 가져오기
+    recent_trades = get_recent_trades(conn)
+    
+    # 현재 시장 데이터 수집 (기존 코드에서 가져온 데이터 사용)
+    current_market_data = {
+        "fear_greed_index": fear_greed_index,
+        "news_headlines": news_headlines,
+        "orderbook": orderbook,
+        "daily_ohlcv": df_daily.to_dict(),
+        "hourly_ohlcv": df_hourly.to_dict()
+    }
+    # 반성 및 개선 내용 생성
+    reflection = generate_reflection(recent_trades, current_market_data)
 
     response = client.chat.completions.create(
     model="gpt-4o-2024-08-06",
@@ -300,53 +394,55 @@ def ai_trading():
             - Recent news headlines and their potential impact on Bitcoin price
             - The Fear and Greed Index and its implications
             - Overall market sentiment
-            - The patterns and trends visible in the chart image
-            - **Wonyoti's key trading strategies from the YouTube video transcript (in Korean)**
+            - The strategies from the four YouTube videos
+            - Recent trading performance and reflection
 
-            Your decision must be based on these inputs, clearly showing how Wonyoti's strategies influenced your recommendation. Respond with a decision (buy, sell, or hold), the reasoning behind it, and a percentage (between 0 and 100) indicating how much of the available KRW to use for a buy order or how much of the available BTC to sell if a sell order is recommended."""
+            Recent trading reflection:
+            {reflection}
+
+            Response format:
+                1. Decision (buy, sell, or hold)
+                2. If the decision is 'buy', provide a percentage (1-100) of available KRW to use for buying.
+                If the decision is 'sell', provide a percentage (1-100) of held BTC to sell.
+                If the decision is 'hold', set the percentage to 0.
+                3. Reason for your decision
+
+                Ensure that the percentage is an integer between 1 and 100 for buy/sell decisions, and exactly 0 for hold decisions.
+                Your percentage should reflect the strength of your conviction in the decision based on the analyzed data.
+        
+            """
         },
         {
             "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"""Current investment status: {json.dumps(filtered_balances)}
+            "content": f"""Current investment status: {json.dumps(all_balances)}
         Orderbook: {json.dumps(orderbook)}
         Daily OHLCV with indicators (30 days): {df_daily.to_json()}
         Hourly OHLCV with indicators (24 hours): {df_hourly.to_json()}
         Recent news headlines: {json.dumps(news_headlines)}
         Fear and Greed Index: {json.dumps(fear_greed_index)}
         YouTube Video Transcript: {youtube_transcript}"""
+        }
+    ],
+    response_format={
+        "type": "json_schema",
+        "json_schema": {
+            "name": "trading_decision",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "decision": {"type": "string", "enum": ["buy", "sell", "hold"]},
+                    "percentage": {
+                        "type": "integer"
                     },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{chart_image}"
-                        }
-                    }
-                ]
+                    "reason": {"type": "string"}
+                },
+                "required": ["decision", "percentage", "reason"],
+                "additionalProperties": False
             }
-        ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "trading_decision",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "decision": {"type": "string", "enum": ["buy", "sell", "hold"]},
-                        "percentage": {
-                            "type": "integer"
-                        },
-                        "reason": {"type": "string"}
-                    },
-                    "required": ["decision", "percentage", "reason"],
-                    "additionalProperties": False
-                }
-            }
-        },
-        max_tokens=4095
+        }
+    },
+    max_tokens=4095
     )
 
     # 최신 pydantic 메서드 사용
@@ -355,27 +451,44 @@ def ai_trading():
     print(f"### AI Decision: {result.decision.upper()} ###")
     print(f"### Reason: {result.reason} ###")
 
+    # 총 자산 계산
+    total_asset = (btc_balance * btc_krw_price) + krw_balance
+
+    # 매매 후 저장할 데이터를 모은 후, 거래 실행 후 저장
     if result.decision == "buy":
-        my_krw = upbit.get_balance("KRW")
-        amount_to_buy = my_krw * (result.percentage / 100) * 0.9995  # 지정된 비율만큼 매수
+        amount_to_buy = krw_balance * (result.percentage / 100) * 0.9995  # 지정된 비율만큼 매수
         if amount_to_buy > 5000:
             print(f"### Buy Order Executed: Buying {result.percentage}% of available KRW ###")
-            print(upbit.buy_market_order("KRW-BTC", amount_to_buy))
+            order_result = upbit.buy_market_order("KRW-BTC", amount_to_buy)
+            print(order_result)
         else:
             print("### Buy Order Failed: Insufficient KRW (less than 5000 KRW) ###")
 
     elif result.decision == "sell":
-        my_btc = upbit.get_balance("BTC")
-        current_price = pyupbit.get_orderbook(ticker="KRW-BTC")['orderbook_units'][0]["ask_price"]
-        amount_to_sell = my_btc * (result.percentage / 100)  # 지정된 비율만큼 매도
-        if amount_to_sell * current_price > 5000:
+        amount_to_sell = btc_balance * (result.percentage / 100)  # 지정된 비율만큼 매도
+        if amount_to_sell * btc_krw_price > 5000:
             print(f"### Sell Order Executed: Selling {result.percentage}% of available BTC ###")
-            print(upbit.sell_market_order("KRW-BTC", amount_to_sell))
+            order_result = upbit.sell_market_order("KRW-BTC", amount_to_sell)
+            print(order_result)
         else:
             print("### Sell Order Failed: Insufficient BTC (less than 5000 KRW worth) ###")
             
     elif result.decision == "hold":
         print("### Hold Position ###")
+
+    # 거래 실행 여부와 관계없이 현재 잔고 조회
+    time.sleep(1)  # API 호출 제한을 고려하여 잠시 대기
+    balances = upbit.get_balances()
+    btc_balance = next((float(balance['balance']) for balance in balances if balance['currency'] == 'BTC'), 0)
+    krw_balance = next((float(balance['balance']) for balance in balances if balance['currency'] == 'KRW'), 0)
+    btc_avg_buy_price = next((float(balance['avg_buy_price']) for balance in balances if balance['currency'] == 'BTC'), 0)
+    current_btc_price = pyupbit.get_current_price("KRW-BTC")
+
+    # 9. 반성 내용 생성 및 데이터 저장
+    save_trade_data_with_reflection(conn, result.decision, result.percentage, result.reason, btc_balance, krw_balance, btc_avg_buy_price, btc_krw_price, total_asset, reflection)
+
+    # 데이터베이스 연결 종료
+    conn.close()
 
 
 ai_trading()

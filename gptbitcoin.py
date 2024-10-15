@@ -68,32 +68,44 @@ def get_fear_and_greed_index():
         logger.error(f"Failed to fetch Fear and Greed Index. Status code: {response.status_code}")
         return None
 
-def get_bitcoin_news():
+def get_latest_news():
+    """SerpApi를 이용하여 최신 비트코인 관련 뉴스 가져오기"""
+    url = "https://serpapi.com/search"
     serpapi_key = os.getenv("SERPAPI_API_KEY")
-    url = "https://serpapi.com/search.json"
     params = {
         "engine": "google_news",
-        "q": "btc",
+        "q": "Bitcoin",
+        "gl": "us",  # 미국 뉴스
+        "hl": "en",  # 영어
         "api_key": serpapi_key
     }
+
+    response = requests.get(url, params=params)
+    news_data = response.json()
     
-    try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
+    # 'news_results'에서 상위 5개의 뉴스만 선택
+    news_results = news_data["news_results"][:5]
+    
+    all_stories = []
+    
+    # 각 news에 대해 stories와 top-level title을 확인하고 title과 date를 가져오기
+    for news in news_results:
+        # 먼저 각 top-level 뉴스의 title 저장
+        top_level_title = news.get("title", "No title available")
+        all_stories.append({"title": top_level_title, "date": "No date (top-level)"})
         
-        news_results = data.get("news_results", [])
-        headlines = []
-        for item in news_results:
-            headlines.append({
-                "title": item.get("title", ""),
-                "date": item.get("date", "")
-            })
-        
-        return headlines[:5]
-    except requests.RequestException as e:
-        logger.error(f"Error fetching news: {e}")
-        return []
+        # 각 news 항목에서 stories를 확인하여 title과 date 추출
+        if "stories" in news:
+            for story in news["stories"]:
+                title = story.get("title", "No title available")
+                date = story.get("date", "No date available")
+                all_stories.append({"title": title, "date": date})
+    
+
+    return all_stories
+
+# 최신 비트코인 관련 뉴스 및 stories 가져오기
+stories = get_latest_news()
 
 def setup_chrome_options():
     chrome_options = Options()
@@ -200,15 +212,18 @@ def capture_and_encode_screenshot(driver):
         logger.error(f"스크린샷 캡처 및 인코딩 중 오류 발생: {e}")
         return None, None
 
-def get_combined_transcript(video_id):
+def get_combined_transcript(playlist):
+    subscribes = []
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        combined_text = ' '.join(entry['text'] for entry in transcript)
-        return combined_text
+        for video_id in playlist:
+            sentences = YouTubeTranscriptApi.get_transcript(video_id, languages=['ko'])
+            # 각 비디오의 텍스트를 하나의 문자열로 결합하여 리스트에 추가
+            combined_text = " ".join([sentence['text'] for sentence in sentences])
+            subscribes.append(combined_text)
     except Exception as e:
-        logger.error(f"Error fetching YouTube transcript: {e}")
-        return ""
-
+        print(f"Error fetching YouTube transcript for video {video_id}: {e}")
+    
+    return subscribes
 def ai_trading():
     # Upbit 객체 생성
     access = os.getenv("UPBIT_ACCESS_KEY")
@@ -244,10 +259,11 @@ def ai_trading():
     fear_greed_index = get_fear_and_greed_index()
 
     # 5. 뉴스 헤드라인 가져오기
-    news_headlines = get_bitcoin_news()
+    news_headlines = get_latest_news()
 
     # 6. YouTube 자막 데이터 가져오기
-    youtube_transcript = get_combined_transcript("TWINrTppUl4")  # 여기에 실제 비트코인 관련 YouTube 영상 ID를 넣으세요
+    playlist = ['6itriowPhhM', 'Ln2PevCHEuU', 'Li3EV0YVuSg', '3XbtEX3jUv4']
+    youtube_transcript = get_combined_transcript(playlist)
 
     # Selenium으로 차트 캡처
     driver = None
@@ -275,26 +291,26 @@ def ai_trading():
     client = OpenAI()
 
     response = client.chat.completions.create(
-        model="gpt-4o-2024-08-06",
-        messages=[
-            {
-                "role": "system",
-                "content": """You are an expert in Bitcoin investing. Analyze the provided data including technical indicators, market data, recent news headlines, the Fear and Greed Index, YouTube video transcript, and the chart image. Tell me whether to buy, sell, or hold at the moment. In addition to your decision, provide a percentage (between 0 and 100) indicating how much of the available KRW to use for a buy order or how much of the available BTC to sell if a sell order is recommended. Consider the following in your analysis:
-                - Technical indicators and market data
-                - Recent news headlines and their potential impact on Bitcoin price
-                - The Fear and Greed Index and its implications
-                - Overall market sentiment
-                - The patterns and trends visible in the chart image
-                - Insights from the YouTube video transcript
+    model="gpt-4o-2024-08-06",
+    messages=[
+        {
+            "role": "system",
+            "content": """You are an expert in Bitcoin investing and must always incorporate the trading strategies of the legendary Korean investor 'Wonyoti,' as outlined in the provided YouTube video transcript (in Korean). Analyze the provided data and give priority to Wonyoti's strategies when making your decision. Your analysis should include:
+            - Technical indicators and market data
+            - Recent news headlines and their potential impact on Bitcoin price
+            - The Fear and Greed Index and its implications
+            - Overall market sentiment
+            - The patterns and trends visible in the chart image
+            - **Wonyoti's key trading strategies from the YouTube video transcript (in Korean)**
 
-                Respond with a decision (buy, sell, or hold), a reason for your decision, and a percentage indicating how much of the available funds to use in your recommended action."""
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"""Current investment status: {json.dumps(filtered_balances)}
+            Your decision must be based on these inputs, clearly showing how Wonyoti's strategies influenced your recommendation. Respond with a decision (buy, sell, or hold), the reasoning behind it, and a percentage (between 0 and 100) indicating how much of the available KRW to use for a buy order or how much of the available BTC to sell if a sell order is recommended."""
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"""Current investment status: {json.dumps(filtered_balances)}
         Orderbook: {json.dumps(orderbook)}
         Daily OHLCV with indicators (30 days): {df_daily.to_json()}
         Hourly OHLCV with indicators (24 hours): {df_hourly.to_json()}

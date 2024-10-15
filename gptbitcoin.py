@@ -318,6 +318,8 @@ def generate_reflection(trades_df, current_market_data):
     
     return response.choices[0].message.content
 
+# 처음에 없다면 db를 만들어줘야한다.
+init_db()
 
 # 매매 판단 및 실행 함수
 def ai_trading():
@@ -502,8 +504,6 @@ def ai_trading():
     # 데이터베이스 연결 종료
     conn.close()
 
-
-ai_trading()
 
 # Main loop
 while True:

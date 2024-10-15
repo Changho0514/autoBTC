@@ -374,7 +374,7 @@ def ai_trading():
     f = open("strategy.txt", "r", encoding="UTF-8")
     youtube_transcript = f.read()
     f.close()
-    
+
     # 8. AI에게 데이터 제공하고 판단 받기
     client = OpenAI()
 
@@ -505,11 +505,11 @@ def ai_trading():
 
 ai_trading()
 
-# # Main loop
-# while True:
-#     try:
-#         ai_trading()
-#         time.sleep(3600 * 4)  # 4시간마다 실행
-#     except Exception as e:
-#         logger.error(f"An error occurred: {e}")
-#         time.sleep(300)  # 오류 발생 시 5분 후 재시도
+# Main loop
+while True:
+    try:
+        ai_trading()
+        time.sleep(3600 * 8)  # 8시간마다 실행
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+        time.sleep(300)  # 오류 발생 시 5분 후 재시도

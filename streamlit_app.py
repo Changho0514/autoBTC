@@ -15,6 +15,17 @@ def load_data():
     conn.close()
     return df
 
+# 수익률 계산 함수
+def calculate_profit_rate(df):
+    # 첫 번째 거래와 마지막 거래의 자산을 비교하여 수익률을 계산
+    if not df.empty:
+        initial_total_asset = df.iloc[0]['total_asset']
+        latest_total_asset = df.iloc[-1]['total_asset']
+        profit_rate = ((latest_total_asset - initial_total_asset) / initial_total_asset) * 100
+        return profit_rate
+    else:
+        return None
+
 # 메인 함수
 def main():
     st.title('Bitcoin Trades Viewer')
@@ -22,6 +33,11 @@ def main():
     # 데이터 로드
     df = load_data()
 
+    profit_rate = calculate_profit_rate(df)
+    if profit_rate is not None:
+        st.header(f"Current Profit Rate: {profit_rate:.2f}%")
+    else:
+        st.header("No trades Yet.")
     # 기본 통계
     st.header('Basic Statistics')
     st.write(f"Total number of trades: {len(df)}")

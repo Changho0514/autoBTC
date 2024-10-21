@@ -1,9 +1,15 @@
+import os
+from dotenv import load_dotenv
 import streamlit as st
 import sqlite3
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import pyupbit  # PyUpbit 추가
 
+load_dotenv()
+access = os.getenv("UPBIT_ACCESS_KEY")
+secret = os.getenv("UPBIT_SECRET_KEY")
 # 데이터베이스 연결 함수
 def get_connection():
     return sqlite3.connect('trading_data.db')
@@ -16,16 +22,23 @@ def load_data():
     conn.close()
     return df
 
-# 수익률 계산 함수
-def calculate_profit_rate(df):
-    # 첫 자산과 예치금을 고려한 수익률 계산
-    if not df.empty:
-        initial_total_asset = df.iloc[0]['total_asset']  # 처음 자산
-        total_deposit = df['deposit'].sum()  # 총 예치금
-        latest_total_asset = df.iloc[-1]['total_asset']  # 현재 자산
+# PyUpbit API를 이용한 현재 잔고 및 자산 조회 함수
+def get_current_assets():
+    upbit = pyupbit.Upbit(access, secret)  # 본인의 API 키로 교체 필요
+    krw_balance = float(upbit.get_balance("KRW"))  # 현재 보유한 현금
+    btc_balance = float(upbit.get_balance("KRW-BTC"))  # 보유한 BTC 수량
+    btc_price = pyupbit.get_current_price("KRW-BTC")  # 현재 BTC 가격
+    total_asset = krw_balance + btc_balance * btc_price  # 총 자산 계산
+    return krw_balance, btc_balance, btc_price, total_asset
 
-        # 초기 자산 = 처음 자산 + 총 예치금
-        initial_investment = initial_total_asset + total_deposit
+# 수익률 계산 함수 수정
+def calculate_profit_rate(df):
+    if not df.empty:
+        # PyUpbit API에서 현재 자산 정보를 가져옴
+        krw_balance, btc_balance, btc_price, latest_total_asset = get_current_assets()
+        
+        initial_total_asset = df.iloc[0]['total_asset']  # 처음 자산
+        initial_investment = initial_total_asset  # 초기 자산
         
         # 수익률 계산
         profit_rate = ((latest_total_asset - initial_investment) / initial_investment) * 100
@@ -33,7 +46,8 @@ def calculate_profit_rate(df):
     else:
         return None, None, None
 
-# 경과 시간과 연환산 수익률 계산 함수
+# 경과 시간과 연환산 수익률 계산 함수는 기존과 동일
+
 def calculate_annualized_return(df, profit_rate):
     if not df.empty:
         first_trade_date = datetime.strptime(df['timestamp'].min(), "%Y-%m-%d %H:%M:%S")  # 첫 거래일

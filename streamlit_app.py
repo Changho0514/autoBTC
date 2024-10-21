@@ -37,7 +37,7 @@ def calculate_profit_rate(df):
         # PyUpbit API에서 현재 자산 정보를 가져옴
         krw_balance, btc_balance, btc_price, latest_total_asset = get_current_assets()
         
-        initial_total_asset = df.iloc[0]['total_asset']  # 처음 자산
+        initial_total_asset = df.iloc[0]['total_asset'] + 1000000 # 처음 자산
         initial_investment = initial_total_asset  # 초기 자산
         
         # 수익률 계산
@@ -50,8 +50,13 @@ def calculate_profit_rate(df):
 
 def calculate_annualized_return(df, profit_rate):
     if not df.empty:
-        first_trade_date = datetime.strptime(df['timestamp'].min(), "%Y-%m-%d %H:%M:%S")  # 첫 거래일
-        last_trade_date = datetime.strptime(df['timestamp'].max(), "%Y-%m-%d %H:%M:%S")   # 마지막 거래일
+        try:
+            first_trade_date = pd.to_datetime(df['timestamp'].min())  # pandas를 사용해 자동으로 처리
+            last_trade_date = datetime.now()
+        except Exception as e:
+            st.write(f"날짜 형식 처리 오류: {e}")
+            return None, None
+
         elapsed_time = (last_trade_date - first_trade_date).total_seconds() / 3600  # 경과 시간(시간 단위)
         
         if elapsed_time > 0:

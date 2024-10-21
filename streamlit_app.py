@@ -67,6 +67,12 @@ def calculate_annualized_return(df, profit_rate):
             return elapsed_time, None
     else:
         return None, None
+    
+# 경과 시간을 일과 시간 단위로 변환하는 함수
+def format_elapsed_time(elapsed_hours):
+    days = int(elapsed_hours // 24)  # 경과 일 수
+    hours = int(elapsed_hours % 24)  # 남은 시간
+    return days, hours
 
 # 메인 함수
 def main():
@@ -88,7 +94,8 @@ def main():
         st.subheader(f"💼 초기 자산: **{initial_investment:.2f} KRW**")
         
         if elapsed_time is not None:
-            st.markdown(f"<span style='color:blue;'>🕒 첫 거래일로부터 **{elapsed_time:.2f} 시간** 경과</span>", unsafe_allow_html=True)
+            days, hours = format_elapsed_time(elapsed_time)
+            st.markdown(f"<span style='color:blue;'>🕒 첫 거래일로부터 **{days}일 {hours}시간** 경과</span>", unsafe_allow_html=True)
             if annualized_return is not None:
                 st.markdown(f"<span style='color:green;'>📈 1년 예상 수익률: **{annualized_return:.2f}%**</span>", unsafe_allow_html=True)
     else:

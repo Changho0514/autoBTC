@@ -83,14 +83,14 @@ def main():
 
     # 수익률과 자산 정보 표시
     if profit_rate is not None:
-        st.header(f"현재 수익률: {profit_rate:.2f}%")
-        st.header(f"현재 총 자산: {latest_total_asset:.2f} KRW")
-        st.header(f"초기 자산: {initial_investment:.2f} KRW")
+        st.subheader(f"💹 현재 수익률: **{profit_rate:.2f}%**")
+        st.subheader(f"💰 현재 총 자산: **{latest_total_asset:.2f} KRW**")
+        st.subheader(f"💼 초기 자산: **{initial_investment:.2f} KRW**")
         
         if elapsed_time is not None:
-            st.write(f"첫 거래일로부터 {elapsed_time:.2f} 시간 경과")
+            st.markdown(f"<span style='color:blue;'>🕒 첫 거래일로부터 **{elapsed_time:.2f} 시간** 경과</span>", unsafe_allow_html=True)
             if annualized_return is not None:
-                st.write(f"1년 예상 수익률: {annualized_return:.2f}%")
+                st.markdown(f"<span style='color:green;'>📈 1년 예상 수익률: **{annualized_return:.2f}%**</span>", unsafe_allow_html=True)
     else:
         st.header("거래 내역이 없습니다.")
 

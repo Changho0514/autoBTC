@@ -1,0 +1,5 @@
+Stochastic: Buy when the K-Line crosses the D-Line, sell when it crosses below. Signals buy below 20 and sell above 80.
+RSI: Overbought above 70, oversold below 30.
+MACD: Buy when the MACD line is above the signal line, sell when it is below it
+Long position conditions: Enter when Stochastic is below 20, RSI is above the midline, and MACD is above the signal line.
+Short position conditions: Enter when the Stochastic is above 80, RSI is below the midline, and MACD is below the signal line.

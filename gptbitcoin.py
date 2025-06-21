@@ -81,28 +81,40 @@ def get_latest_news():
         "api_key": SERP_API_KEY
     }
 
-    response = requests.get(url, params=params)
-    news_data = response.json()
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()  # HTTP 에러 발생 시 예외
 
-    # 'news_results'에서 상위 5개의 뉴스만 선택
-    news_results = news_data["news_results"][:5]
-    
-    all_stories = []
-    
-    # 각 news에 대해 stories와 top-level title을 확인하고 title과 date를 가져오기
-    for news in news_results:
-        # 먼저 각 top-level 뉴스의 title 저장
-        top_level_title = news.get("title", "No title available")
-        all_stories.append({"title": top_level_title, "date": "No date (top-level)"})
-        
-        # 각 news 항목에서 stories를 확인하여 title과 date 추출
-        if "stories" in news:
-            for story in news["stories"]:
+        news_data = response.json()
+
+        if "news_results" not in news_data:
+            print(f"⚠️ 'news_results'가 응답에 없음: {news_data}")
+            return []
+
+        news_results = news_data["news_results"][:5]
+        all_stories = []
+
+        for news in news_results:
+            top_level_title = news.get("title", "No title available")
+            all_stories.append({"title": top_level_title, "date": "No date (top-level)"})
+
+            for story in news.get("stories", []):
                 title = story.get("title", "No title available")
                 date = story.get("date", "No date available")
                 all_stories.append({"title": title, "date": date})
 
-    return all_stories
+        return all_stories
+
+    except requests.exceptions.RequestException as e:
+        print(f"❌ 요청 에러 발생: {e}")
+    except ValueError as e:
+        print(f"❌ JSON 파싱 에러: {e}")
+    except KeyError as e:
+        print(f"❌ 응답 데이터에 필요한 키가 없음: {e}")
+    except Exception as e:
+        print(f"❌ 알 수 없는 에러: {e}")
+
+    return []  # 에러 발생 시 빈 리스트 반환
 
 def setup_chrome_options():
     chrome_options = Options()

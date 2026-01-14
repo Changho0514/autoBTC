@@ -305,7 +305,7 @@ def sell_order(amount):
 def generate_reflection(trades_df, current_market_data):
     performance = calculate_performance(trades_df)
 
-    model = genai.GenerativeModel('gemini-3-pro-preview')
+    model = genai.GenerativeModel('gemini-2.5-flash')
 
     prompt = f"""You are an AI trading assistant tasked with analyzing recent trading performance and current market conditions to generate insights and improvements for future trading decisions.
 
@@ -385,7 +385,7 @@ def ai_trading():
     reflection = generate_reflection(recent_trades, current_market_data)
 
     # Gemini API 호출로 거래 결정 요청
-    model = genai.GenerativeModel('gemini-3-pro-preview')
+    model = genai.GenerativeModel('gemini-2.5-flash')
 
     prompt = f"""You are an expert in Bitcoin investing and must always incorporate the trading strategies in the provided YouTube video transcript. Analyze the provided data and give priority to YouTube's strategies when making your decision. Your analysis should include:
 - Technical indicators and market data

@@ -1,5 +1,5 @@
 python-dotenv
-openai
+google-generativeai
 pyupbit
 ta
 selenium
@@ -8,3 +8,6 @@ Pillow
 youtube-transcript-api
 streamlit
 plotly
+pydantic
+pandas
+requests

@@ -6,7 +6,7 @@ import jwt
 import uuid
 import time
 import requests
-from openai import OpenAI
+import google.generativeai as genai
 import ta
 from ta.utils import dropna
 import logging
@@ -24,6 +24,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+# Gemini API 설정
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # JWT 인증 토큰 생성 함수
 def generate_auth_token():
@@ -301,39 +304,30 @@ def sell_order(amount):
 
 def generate_reflection(trades_df, current_market_data):
     performance = calculate_performance(trades_df)
-    
-    client = OpenAI()
-    response = client.chat.completions.create(
-        model="gpt-4o-2024-08-06",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are an AI trading assistant tasked with analyzing recent trading performance and current market conditions to generate insights and improvements for future trading decisions."
-            },
-            {
-                "role": "user",
-                "content": f"""
-                Recent trading data:
-                {trades_df.to_json(orient='records')}
-                
-                Current market data:
-                {current_market_data}
-                
-                Overall performance during the last trading period: {performance:.2f}%
-                
-                Please analyze this data and provide:
-                1. A brief reflection on the recent trading decisions
-                2. What specific strategies or indicators were successful or unsuccessful?
-                3. Suggestions for improvement in future trading decisions
-                4. Any patterns or trends you notice in the market data
-                
-                Limit your response to 250 words or less.
-                """
-            }
-        ]
-    )
-    
-    return response.choices[0].message.content
+
+    model = genai.GenerativeModel('gemini-3-flash')
+
+    prompt = f"""You are an AI trading assistant tasked with analyzing recent trading performance and current market conditions to generate insights and improvements for future trading decisions.
+
+Recent trading data:
+{trades_df.to_json(orient='records')}
+
+Current market data:
+{current_market_data}
+
+Overall performance during the last trading period: {performance:.2f}%
+
+Please analyze this data and provide:
+1. A brief reflection on the recent trading decisions
+2. What specific strategies or indicators were successful or unsuccessful?
+3. Suggestions for improvement in future trading decisions
+4. Any patterns or trends you notice in the market data
+
+Limit your response to 250 words or less.
+"""
+
+    response = model.generate_content(prompt)
+    return response.text
 
 
 def save_trade_data_with_reflection(conn, decision, percentage, reason, btc_balance, krw_balance, btc_avg_buy_price, btc_krw_price, total_asset, reflection):
@@ -390,75 +384,43 @@ def ai_trading():
     recent_trades = get_recent_trades(conn)
     reflection = generate_reflection(recent_trades, current_market_data)
 
-    # OpenAI API 호출로 거래 결정 요청
-    client = OpenAI()
-    response = client.chat.completions.create(
-        model="gpt-4o-2024-08-06",
-        messages=[
-        {
-            "role": "system",
-            "content": """You are an expert in Bitcoin investing and must always incorporate the trading strategies in the provided YouTube video transcript. Analyze the provided data and give priority to YouTube's strategies when making your decision. Your analysis should include:
-            - Technical indicators and market data
-            - The strategies from the YouTube video
-            - Recent trading performance and reflection
+    # Gemini API 호출로 거래 결정 요청
+    model = genai.GenerativeModel('gemini-3-flash')
 
-            Recent trading reflection:
-            {reflection}
+    prompt = f"""You are an expert in Bitcoin investing and must always incorporate the trading strategies in the provided YouTube video transcript. Analyze the provided data and give priority to YouTube's strategies when making your decision. Your analysis should include:
+- Technical indicators and market data
+- The strategies from the YouTube video
+- Recent trading performance and reflection
 
-            Response format:
-                1. Decision (buy, sell, or hold)
-                2. If the decision is 'buy', provide a percentage (1-100) of available KRW to use for buying.
-                If the decision is 'sell', provide a percentage (1-100) of held BTC to sell.
-                If the decision is 'hold', set the percentage to 0.
-                3. Reason for your decision
+Recent trading reflection:
+{reflection}
 
-                Ensure that the percentage is an integer between 1 and 100 for buy/sell decisions, and exactly 0 for hold decisions.
-                Your percentage should reflect the strength of your conviction in the decision based on the analyzed data.
-        
-            """
-        },
-        {
-            "role": "user",
-            "content": f"""Current investment status: {json.dumps(balances)}
-            Orderbook: {json.dumps(orderbook)}
-            Daily OHLCV with indicators (30 days): {df_daily.to_json()}
-            Hourly OHLCV with indicators (24 hours): {df_hourly.to_json()}
-            YouTube Video Transcript: {youtube_transcript}"""
-        }
-    ],
-    response_format={
-        "type": "json_schema",
-        "json_schema": {
-            "name": "trading_decision",
-            "strict": True,
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "decision": {"type": "string", "enum": ["buy", "sell", "hold"]},
-                    "percentage": {
-                        "type": "integer"
-                    },
-                    "reason": {"type": "string"}
-                },
-                "required": ["decision", "percentage", "reason"],
-                "additionalProperties": False
-            }
-        }
-    },
-        max_tokens=4095
+Current investment status: {json.dumps(balances)}
+Orderbook: {json.dumps(orderbook)}
+Daily OHLCV with indicators (30 days): {df_daily.to_json()}
+Hourly OHLCV with indicators (24 hours): {df_hourly.to_json()}
+YouTube Video Transcript: {youtube_transcript}
+
+IMPORTANT: You must respond ONLY with a valid JSON object in the following format, no other text:
+{{"decision": "buy" or "sell" or "hold", "percentage": integer between 0-100, "reason": "your reasoning"}}
+
+Rules:
+- decision must be exactly one of: "buy", "sell", "hold"
+- If decision is "buy": percentage is 1-100 (percent of available KRW to use)
+- If decision is "sell": percentage is 1-100 (percent of held BTC to sell)
+- If decision is "hold": percentage must be 0
+- reason should explain your decision
+"""
+
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.GenerationConfig(
+            response_mime_type="application/json",
+        )
     )
 
-     # 응답을 문자열로 가져오기
-    response_content = response.choices[0].message.content.strip()
-    
-    try:
-        # JSON 파싱
-        result = TradingDecision.parse_raw(response_content)
-        logger.debug("AI Decision: %s, Reason: %s", result.decision, result.reason)
-    except Exception as e:
-        logger.error("Error parsing TradingDecision: %s", e)
-        logger.debug("Response content: %s", response_content)
-        return
+    # Gemini 응답 파싱
+    result = TradingDecision.model_validate_json(response.text)
 
     print(f"### AI Decision: {result.decision.upper()} ###")
     print(f"### Reason: {result.reason} ###")
@@ -503,11 +465,11 @@ def ai_trading():
     # 데이터베이스 연결 종료
     conn.close()
 
-# 메인 루프
-while True:
+# GitHub Actions에서 스케줄링하므로 단일 실행
+if __name__ == "__main__":
     try:
         ai_trading()
-        time.sleep(3600)  # 1시간마다 실행
+        logger.info("Trading completed successfully")
     except Exception as e:
         logger.error("An error occurred in ai_trading: %s", e)
-        time.sleep(300)  # 오류 발생 시 5분 후 재시도
+        raise e  # GitHub Actions에서 실패를 감지할 수 있도록

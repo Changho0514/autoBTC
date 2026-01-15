@@ -505,50 +505,61 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        profit_class = "profit" if profit_rate and profit_rate >= 0 else "loss"
-        profit_sign = "+" if profit_rate and profit_rate >= 0 else ""
-        st.markdown(f'''
-        <div class="metric-card {profit_class}">
-            <div class="metric-label">현재 수익률</div>
-            <div class="metric-value {profit_class}">{profit_sign}{profit_rate:.2f}%</div>
-            <div class="metric-delta" style="color: {'#3fb950' if profit_rate >= 0 else '#f85149'}">
-                {get_decision_emoji('buy') if profit_rate >= 0 else get_decision_emoji('sell')} 누적 수익률
+        if profit_rate is not None:
+            profit_class = "profit" if profit_rate >= 0 else "loss"
+            profit_sign = "+" if profit_rate >= 0 else ""
+            delta_color = '#3fb950' if profit_rate >= 0 else '#f85149'
+            delta_emoji = get_decision_emoji('buy') if profit_rate >= 0 else get_decision_emoji('sell')
+            st.markdown(f'''
+            <div class="metric-card {profit_class}">
+                <div class="metric-label">현재 수익률</div>
+                <div class="metric-value {profit_class}">{profit_sign}{profit_rate:.2f}%</div>
+                <div class="metric-delta" style="color: {delta_color}">
+                    {delta_emoji} 누적 수익률
+                </div>
             </div>
-        </div>
-        ''', unsafe_allow_html=True) if profit_rate else st.markdown('''
-        <div class="metric-card">
-            <div class="metric-label">현재 수익률</div>
-            <div class="metric-value">계산 중...</div>
-        </div>
-        ''', unsafe_allow_html=True)
+            ''', unsafe_allow_html=True)
+        else:
+            st.markdown('''
+            <div class="metric-card">
+                <div class="metric-label">현재 수익률</div>
+                <div class="metric-value">계산 중...</div>
+            </div>
+            ''', unsafe_allow_html=True)
 
     with col2:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-label">현재 총 자산</div>
-            <div class="metric-value">{format_krw(latest_total_asset)}</div>
-            <div class="metric-delta" style="color: #8b949e;">₩{latest_total_asset:,.0f}</div>
-        </div>
-        ''', unsafe_allow_html=True) if latest_total_asset else st.markdown('''
-        <div class="metric-card">
-            <div class="metric-label">현재 총 자산</div>
-            <div class="metric-value">조회 중...</div>
-        </div>
-        ''', unsafe_allow_html=True)
+        if latest_total_asset:
+            st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">현재 총 자산</div>
+                <div class="metric-value">{format_krw(latest_total_asset)}</div>
+                <div class="metric-delta" style="color: #8b949e;">₩{latest_total_asset:,.0f}</div>
+            </div>
+            ''', unsafe_allow_html=True)
+        else:
+            st.markdown('''
+            <div class="metric-card">
+                <div class="metric-label">현재 총 자산</div>
+                <div class="metric-value">조회 중...</div>
+            </div>
+            ''', unsafe_allow_html=True)
 
     with col3:
-        st.markdown(f'''
-        <div class="metric-card">
-            <div class="metric-label">초기 자산</div>
-            <div class="metric-value">{format_krw(initial_investment)}</div>
-            <div class="metric-delta" style="color: #8b949e;">₩{initial_investment:,.0f}</div>
-        </div>
-        ''', unsafe_allow_html=True) if initial_investment else st.markdown('''
-        <div class="metric-card">
-            <div class="metric-label">초기 자산</div>
-            <div class="metric-value">-</div>
-        </div>
-        ''', unsafe_allow_html=True)
+        if initial_investment:
+            st.markdown(f'''
+            <div class="metric-card">
+                <div class="metric-label">초기 자산</div>
+                <div class="metric-value">{format_krw(initial_investment)}</div>
+                <div class="metric-delta" style="color: #8b949e;">₩{initial_investment:,.0f}</div>
+            </div>
+            ''', unsafe_allow_html=True)
+        else:
+            st.markdown('''
+            <div class="metric-card">
+                <div class="metric-label">초기 자산</div>
+                <div class="metric-value">-</div>
+            </div>
+            ''', unsafe_allow_html=True)
 
     with col4:
         if elapsed_time:

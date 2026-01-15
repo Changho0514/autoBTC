@@ -301,23 +301,23 @@ def generate_reflection(trades_df, current_market_data):
 
     model = genai.GenerativeModel('gemini-2.5-flash')
 
-    prompt = f"""You are an AI trading assistant tasked with analyzing recent trading performance and current market conditions to generate insights and improvements for future trading decisions.
+    prompt = f"""당신은 최근 트레이딩 성과와 현재 시장 상황을 분석하여 향후 트레이딩 결정에 대한 인사이트와 개선점을 제공하는 AI 트레이딩 어시스턴트입니다.
 
-Recent trading data:
+최근 거래 데이터:
 {trades_df.to_json(orient='records')}
 
-Current market data:
+현재 시장 데이터:
 {current_market_data}
 
-Overall performance in the last 7 days: {performance:.2f}%
+최근 7일간 수익률: {performance:.2f}%
 
-Please analyze this data and provide:
-1. A brief reflection on the recent trading decisions
-2. Insights on what worked well and what didn't
-3. Suggestions for improvement in future trading decisions
-4. Any patterns or trends you notice in the market data
+다음 내용을 분석하여 **반드시 한글로** 응답해주세요:
+1. 최근 거래 결정에 대한 간략한 평가
+2. 잘된 점과 개선이 필요한 점
+3. 향후 거래 결정을 위한 제안
+4. 시장 데이터에서 발견한 패턴이나 트렌드
 
-Limit your response to 250 words or less.
+250단어 이내로 작성해주세요.
 """
 
     response = model.generate_content(prompt)
@@ -403,34 +403,36 @@ def ai_trading():
     # Gemini 모델로 거래 결정
     model = genai.GenerativeModel('gemini-2.5-flash')
 
-    prompt = f"""You are an expert in Bitcoin investing and must always incorporate the trading strategies of the legendary Korean investor 'Wonyoti,' as outlined in the provided YouTube video transcript (in Korean). Analyze the provided data and give priority to Wonyoti's strategies when making your decision. Your analysis should include:
-- Technical indicators and market data
-- Recent news headlines and their potential impact on Bitcoin price
-- The Fear and Greed Index and its implications
-- Overall market sentiment
-- The strategies from the YouTube videos
-- Recent trading performance and reflection
+    prompt = f"""당신은 비트코인 투자 전문가이며, 제공된 유튜브 영상 자막(한국어)에 설명된 전설적인 한국 투자자 '원요티'의 트레이딩 전략을 항상 참고해야 합니다. 제공된 데이터를 분석하고 원요티의 전략을 우선적으로 고려하여 결정을 내려주세요.
 
-Recent trading reflection:
+분석에 포함할 내용:
+- 기술적 지표 및 시장 데이터
+- 최근 뉴스 헤드라인과 비트코인 가격에 미칠 영향
+- 공포탐욕지수와 그 의미
+- 전반적인 시장 심리
+- 유튜브 영상의 전략
+- 최근 거래 성과 및 반성
+
+최근 거래 분석:
 {reflection}
 
-Current investment status: {json.dumps(all_balances)}
-Orderbook: {json.dumps(orderbook)}
-Daily OHLCV with indicators (30 days): {df_daily.to_json()}
-Hourly OHLCV with indicators (24 hours): {df_hourly.to_json()}
-Recent news headlines: {json.dumps(news_headlines)}
-Fear and Greed Index: {json.dumps(fear_greed_index)}
-YouTube Video Transcript: {youtube_transcript}
+현재 투자 상태: {json.dumps(all_balances)}
+호가창: {json.dumps(orderbook)}
+일봉 OHLCV 및 지표 (30일): {df_daily.to_json()}
+시간봉 OHLCV 및 지표 (24시간): {df_hourly.to_json()}
+최근 뉴스 헤드라인: {json.dumps(news_headlines)}
+공포탐욕지수: {json.dumps(fear_greed_index)}
+유튜브 영상 자막: {youtube_transcript}
 
-IMPORTANT: You must respond ONLY with a valid JSON object in the following format, no other text:
-{{"decision": "buy" or "sell" or "hold", "percentage": integer between 0-100, "reason": "your reasoning"}}
+중요: 반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 포함하지 마세요:
+{{"decision": "buy" 또는 "sell" 또는 "hold", "percentage": 0-100 사이의 정수, "reason": "한글로 작성된 거래 근거"}}
 
-Rules:
-- decision must be exactly one of: "buy", "sell", "hold"
-- If decision is "buy": percentage is 1-100 (percent of available KRW to use)
-- If decision is "sell": percentage is 1-100 (percent of held BTC to sell)
-- If decision is "hold": percentage must be 0
-- reason should explain your decision
+규칙:
+- decision은 반드시 "buy", "sell", "hold" 중 하나여야 합니다
+- "buy"인 경우: percentage는 1-100 (사용할 KRW의 비율)
+- "sell"인 경우: percentage는 1-100 (매도할 BTC의 비율)
+- "hold"인 경우: percentage는 반드시 0
+- reason은 **반드시 한글로** 거래 결정의 근거를 설명해주세요
 """
 
     response = model.generate_content(
